@@ -1,11 +1,8 @@
 import streamlit as st
-import requests
 from PIL import Image
+import requests
 from io import BytesIO
-
-# ----------------------------
-# Streamlit Page Config
-# ----------------------------
+from urllib.parse import quote
 
 st.set_page_config(
     page_title="AI Image Generator",
@@ -14,70 +11,43 @@ st.set_page_config(
 )
 
 st.title("🎨 AI Image Generator")
-st.write("Generate stunning AI images from text prompts.")
-
-# ----------------------------
-# Hugging Face API
-# ----------------------------
-
-API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
-
-# Read token from Streamlit Secrets
-HF_TOKEN = st.secrets["HF_TOKEN"]
-
-headers = {
-    "Authorization": f"Bearer {HF_TOKEN}"
-}
-
-# ----------------------------
-# User Input
-# ----------------------------
+st.write("Generate AI images from text prompts using Pollinations AI.")
 
 prompt = st.text_area(
     "Enter your prompt",
     placeholder="A futuristic city at sunset with flying cars..."
 )
 
-# ----------------------------
-# Generate Image
-# ----------------------------
+width = st.selectbox("Width", [512, 768, 1024], index=0)
+height = st.selectbox("Height", [512, 768, 1024], index=0)
 
 if st.button("Generate Image"):
 
-    if prompt.strip() == "":
+    if not prompt.strip():
         st.warning("Please enter a prompt.")
         st.stop()
 
     with st.spinner("Generating image..."):
 
-        response = requests.post(
-            API_URL,
-            headers=headers,
-            json={"inputs": prompt},
-            timeout=300
-        )
+        url = f"https://image.pollinations.ai/prompt/{quote(prompt)}?width={width}&height={height}&nologo=true"
 
-    if response.status_code == 200:
+        try:
+            response = requests.get(url, timeout=120)
+            response.raise_for_status()
 
-        image = Image.open(BytesIO(response.content))
+            image = Image.open(BytesIO(response.content))
 
-        st.image(
-            image,
-            caption=prompt,
-            use_container_width=True
-        )
+            st.image(image, caption=prompt, use_container_width=True)
 
-        buffer = BytesIO()
-        image.save(buffer, format="PNG")
+            buffer = BytesIO()
+            image.save(buffer, format="PNG")
 
-        st.download_button(
-            "📥 Download Image",
-            data=buffer.getvalue(),
-            file_name="generated_image.png",
-            mime="image/png"
-        )
+            st.download_button(
+                "📥 Download Image",
+                buffer.getvalue(),
+                "generated_image.png",
+                "image/png"
+            )
 
-    else:
-
-        st.error("Image generation failed.")
-        st.code(response.text)
+        except Exception as e:
+            st.error(f"Error: {e}")
