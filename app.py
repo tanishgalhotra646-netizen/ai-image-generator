@@ -1,6 +1,11 @@
 import streamlit as st
-import torch
-from diffusers import StableDiffusionPipeline
+import requests
+from PIL import Image
+from io import BytesIO
+
+# ----------------------------
+# Streamlit Page Config
+# ----------------------------
 
 st.set_page_config(
     page_title="AI Image Generator",
@@ -9,49 +14,70 @@ st.set_page_config(
 )
 
 st.title("🎨 AI Image Generator")
-st.write("Generate images using Stable Diffusion v1.5")
+st.write("Generate stunning AI images from text prompts.")
 
-# Load model only once
-@st.cache_resource
-def load_model():
+# ----------------------------
+# Hugging Face API
+# ----------------------------
 
-    model_id = "runwayml/stable-diffusion-v1-5"
+API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"
 
-    pipe = StableDiffusionPipeline.from_pretrained(
-        model_id,
-        torch_dtype=torch.float32
-    )
+# Read token from Streamlit Secrets
+HF_TOKEN = st.secrets["HF_TOKEN"]
 
-    pipe = pipe.to("cpu")     # Change to cuda if GPU available
+headers = {
+    "Authorization": f"Bearer {HF_TOKEN}"
+}
 
-    return pipe
+# ----------------------------
+# User Input
+# ----------------------------
 
-pipe = load_model()
-
-prompt = st.text_input(
+prompt = st.text_area(
     "Enter your prompt",
-    placeholder="A futuristic city at sunset"
+    placeholder="A futuristic city at sunset with flying cars..."
 )
+
+# ----------------------------
+# Generate Image
+# ----------------------------
 
 if st.button("Generate Image"):
 
     if prompt.strip() == "":
         st.warning("Please enter a prompt.")
+        st.stop()
+
+    with st.spinner("Generating image..."):
+
+        response = requests.post(
+            API_URL,
+            headers=headers,
+            json={"inputs": prompt},
+            timeout=300
+        )
+
+    if response.status_code == 200:
+
+        image = Image.open(BytesIO(response.content))
+
+        st.image(
+            image,
+            caption=prompt,
+            use_container_width=True
+        )
+
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+
+        st.download_button(
+            "📥 Download Image",
+            data=buffer.getvalue(),
+            file_name="generated_image.png",
+            mime="image/png"
+        )
+
     else:
 
-        with st.spinner("Generating image..."):
-
-            image = pipe(prompt).images[0]
-
-        st.image(image, caption=prompt, use_container_width=True)
-
-        image.save("generated_image.png")
-
-        with open("generated_image.png", "rb") as file:
-
-            st.download_button(
-                label="Download Image",
-                data=file,
-                file_name="generated_image.png",
-                mime="image/png"
-            )
+        st.error("Image generation failed.")
+        st.code(response.text)
